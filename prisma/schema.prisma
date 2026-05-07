@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  ACKNOWLEDGED
+}
+
+enum AggregationGranularity {
+  ONE_MINUTE
+  FIVE_MINUTES
+  ONE_HOUR
+  ONE_DAY
+}
+
+model Service {
+  id              String        @id @default(uuid())
+  name            String        @unique
+  description     String?
+  logRetentionDays Int          @default(30)
+  alertContacts   String[]
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  logs            Log[]
+  alertRules      AlertRule[]
+  alerts          Alert[]
+  
+  @@index([name])
+}
+
+model Log {
+  id              String        @id @default(uuid())
+  timestamp       DateTime      @db.Timestamptz
+  level           LogLevel
+  serviceId       String
+  message         String
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  
+  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  @@index([timestamp])
+  @@index([level])
+  @@index([serviceId])
+  @@index([timestamp, level])
+  @@index([timestamp, serviceId])
+}
+
+model LogArchive {
+  id              String        @id @default(uuid())
+  originalId      String        @unique
+  timestamp       DateTime      @db.Timestamptz
+  level           LogLevel
+  serviceId       String
+  message         String
+  metadata        Json          @default("{}")
+  archivedAt      DateTime      @default(now())
+  
+  @@index([timestamp])
+  @@index([serviceId])
+  @@index([archivedAt])
+}
+
+model AlertRule {
+  id              String        @id @default(uuid())
+  serviceId       String
+  name            String
+  description     String?
+  timeWindowMinutes Int         @default(5)
+  threshold       Int           @default(10)
+  isEnabled       Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  alerts          Alert[]
+  
+  @@index([serviceId])
+  @@index([isEnabled])
+}
+
+model Alert {
+  id              String        @id @default(uuid())
+  ruleId          String
+  serviceId       String
+  status          AlertStatus   @default(ACTIVE)
+  triggeredAt     DateTime      @default(now())
+  resolvedAt      DateTime?
+  acknowledgedAt  DateTime?
+  acknowledgedBy  String?
+  message         String
+  metadata        Json          @default("{}")
+  
+  rule            AlertRule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  service         Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  @@index([status])
+  @@index([triggeredAt])
+  @@index([serviceId])
+}
